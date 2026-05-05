@@ -1,5 +1,4 @@
 import os
-import re
 import google.auth
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -41,40 +40,56 @@ class YouTubeUploader:
         if not self.authenticate():
             return None
 
-        # 🔧 FIX: Clean tags before sending to YouTube
-        if tags:
-            clean = []
-            total_length = 0
-
-            for tag in tags:
-                if not tag:
+        # ── Sanitize and validate tags ──────────────────────────────
+        def sanitize_tags(tags_list):
+            """
+            YouTube tag validation:
+            - Max 500 chars total
+            - No special chars except space & hyphen
+            - Max 30 tags
+            - Each tag max 30 chars
+            """
+            if not tags_list:
+                return ["mythology", "shorts"]
+            
+            sanitized = []
+            total_chars = 0
+            
+            for tag in tags_list:
+                if not isinstance(tag, str):
                     continue
-
-                # remove invalid characters
-                tag = re.sub(r"[#@|\\/:\n\r\t]", "", tag).strip()
-
-                if not tag:
+                
+                # Remove invalid characters (keep only alphanumeric, space, hyphen)
+                cleaned = ''.join(c for c in tag.lower() if c.isalnum() or c in ' -')
+                cleaned = cleaned.strip()
+                
+                # Skip if too long or empty
+                if not cleaned or len(cleaned) > 30:
                     continue
-
-                # limit individual tag length
-                if len(tag) > 30:
-                    tag = tag[:30]
-
-                # total tags length limit (~500 chars)
-                if total_length + len(tag) + 1 > 480:
+                
+                # Check if adding this tag would exceed 500 char limit
+                new_total = total_chars + len(cleaned) + 1  # +1 for comma
+                if new_total > 500:
                     break
+                
+                # Skip duplicates
+                if cleaned not in sanitized:
+                    sanitized.append(cleaned)
+                    total_chars = new_total
+                
+                # Max 30 tags
+                if len(sanitized) >= 30:
+                    break
+            
+            return sanitized if sanitized else ["mythology", "shorts"]
 
-                clean.append(tag)
-                total_length += len(tag) + 1
-
-            # remove duplicates
-            tags = list(dict.fromkeys(clean))
+        validated_tags = sanitize_tags(tags)
 
         body = {
             "snippet": {
                 "title": title[:100],
                 "description": description,
-                "tags": tags or ["hindi story", "shorts"],
+                "tags": validated_tags,
                 "categoryId": "22",
             },
             "status": {
