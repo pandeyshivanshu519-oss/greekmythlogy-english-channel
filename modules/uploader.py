@@ -1,4 +1,5 @@
 import os
+import re
 import google.auth
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -39,6 +40,35 @@ class YouTubeUploader:
 
         if not self.authenticate():
             return None
+
+        # 🔧 FIX: Clean tags before sending to YouTube
+        if tags:
+            clean = []
+            total_length = 0
+
+            for tag in tags:
+                if not tag:
+                    continue
+
+                # remove invalid characters
+                tag = re.sub(r"[#@|\\/:\n\r\t]", "", tag).strip()
+
+                if not tag:
+                    continue
+
+                # limit individual tag length
+                if len(tag) > 30:
+                    tag = tag[:30]
+
+                # total tags length limit (~500 chars)
+                if total_length + len(tag) + 1 > 480:
+                    break
+
+                clean.append(tag)
+                total_length += len(tag) + 1
+
+            # remove duplicates
+            tags = list(dict.fromkeys(clean))
 
         body = {
             "snippet": {
