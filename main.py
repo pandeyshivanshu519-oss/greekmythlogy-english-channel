@@ -152,66 +152,49 @@ async def create_one_short(short_number):
         name_lower = movie_name.lower()
         if any(w in name_lower for w in ["zeus","hercules","achilles","odyssey","perseus","troy","athena","poseidon","hades","apollo","medusa","minotaur","greek","olympus","titan","prometheus","jason","orpheus","icarus","pandora","narcissus","atalanta","midas","sisyphus","circe","medea","cassandra","helen","oedipus","antigone","bellerophon","pygmalion","ares","artemis","aphrodite","hermes","hephaestus","dionysus"]):
             myth_category = "Greek"
-            category_tags = ["greek mythology","greek gods","olympus","ancient greece","greek legend","mythology stories","greek heroes","gods of olympus","greek myths for kids","mythology explained"]
-            category_hashtags = "#GreekMythology #GreekGods #Olympus #AncientGreece #GreekLegend"
+            category_tags = ["greek mythology","greek gods","olympus","ancient greece","greek heroes","mythology","gods"]
         elif any(w in name_lower for w in ["thor","loki","odin","ragnarok","freya","norse","viking","valhalla","sigurd","beowulf","valkyrie","baldur","tyr","fenrir","jormungandr","hel","asgard"]):
             myth_category = "Norse"
-            category_tags = ["norse mythology","norse gods","thor","loki","odin","valhalla","ragnarok","viking mythology","norse legend","asgard","viking gods","norse myths for kids"]
-            category_hashtags = "#NorseMythology #NorseGods #Thor #Loki #Odin #Valhalla #Ragnarok #Vikings"
+            category_tags = ["norse mythology","norse gods","thor","loki","odin","valhalla","ragnarok","viking mythology"]
         elif any(w in name_lower for w in ["ra","osiris","horus","anubis","isis","egypt","pharaoh","nile","sobek","thoth","sekhmet","cleopatra","mummy","pyramid"]):
             myth_category = "Egyptian"
-            category_tags = ["egyptian mythology","egyptian gods","ancient egypt","pharaoh","ra","osiris","horus","anubis","isis","nile gods","egypt legend","egyptian myths for kids"]
-            category_hashtags = "#EgyptianMythology #EgyptianGods #AncientEgypt #Pharaoh #Osiris #Horus"
+            category_tags = ["egyptian mythology","egyptian gods","ancient egypt","pharaoh","osiris","horus","anubis"]
         elif any(w in name_lower for w in ["arthur","merlin","lancelot","guinevere","excalibur","camelot","grail","robin hood","celtic","cuchulainn","dagda"]):
             myth_category = "Celtic"
-            category_tags = ["king arthur","arthurian legend","merlin","excalibur","camelot","celtic mythology","knights of the round table","holy grail","arthurian myths","british legend"]
-            category_hashtags = "#KingArthur #Merlin #Excalibur #Camelot #ArthurianLegend #CelticMythology"
+            category_tags = ["king arthur","arthurian legend","merlin","excalibur","camelot","celtic mythology"]
         elif any(w in name_lower for w in ["rama","ramayana","hanuman","krishna","arjuna","karna","ravana","mahabharat","shiva","vishnu","durga","ganesha","indra","bhishma"]):
             myth_category = "Hindu"
-            category_tags = ["hindu mythology","ramayana","mahabharata","krishna","rama","hanuman","indian mythology","vedic stories","hindu gods","epic of india","indian legend","mythology stories"]
-            category_hashtags = "#HinduMythology #Ramayana #Mahabharata #Krishna #Rama #Hanuman #IndianMythology"
+            category_tags = ["hindu mythology","ramayana","mahabharata","krishna","rama","hanuman","indian mythology"]
         elif any(w in name_lower for w in ["sun wukong","monkey king","mulan","amaterasu","japanese","chinese","aztec","mayan","gilgamesh","anansi"]):
             myth_category = "World"
-            category_tags = ["world mythology","ancient legends","mythology stories","epic tales","legendary heroes","ancient gods","mythology explained","world history mythology"]
-            category_hashtags = "#WorldMythology #AncientLegends #EpicTales #LegendaryHeroes #MythologyStories"
+            category_tags = ["world mythology","ancient legends","mythology stories","epic tales","legendary heroes"]
         else:
             myth_category = "Mythology"
-            category_tags = ["mythology","ancient legends","epic stories","legendary heroes","gods and heroes","mythology explained"]
-            category_hashtags = "#Mythology #AncientLegends #EpicStories #LegendaryHeroes"
+            category_tags = ["mythology","ancient legends","epic stories","legendary heroes"]
 
-        # ── Tags — max 500 chars total, YouTube allows up to 500 chars ─
+        # ── Tags — YouTube compliant (max 500 chars, 30 tags max) ──────
         base_tags = [
             movie_name,
             f"{movie_name} Part {part_number}",
             f"{myth_category} mythology",
-            f"{myth_category} mythology story",
-            f"{myth_category} gods",
             "mythology shorts",
             "mythology explained",
-            "mythology stories for kids",
-            "mythology for beginners",
+            "mythology stories",
+            "mythology for kids",
             "mythology animated",
-            "epic mythology",
             "ancient mythology",
-            "mythology youtube shorts",
-            "mythology series",
-            "legendary stories",
             "epic stories",
+            "legendary stories",
             "gods and heroes",
             "ancient legends",
             "story time",
-            "animated mythology",
             "mythology cartoon",
             "epic tales",
             "ancient history",
-            "history mythology",
-            "mythology facts",
-            "youtube shorts mythology",
-            "shorts mythology",
+            "youtube shorts",
             f"Part {part_number}",
-            CHANNEL_NAME,
         ]
-        tags = list(dict.fromkeys(base_tags + category_tags))   # deduplicate
+        tags = list(dict.fromkeys(base_tags + category_tags))[:30]  # max 30 tags
 
         # ── Description — rich with hashtags for YouTube SEO ──────────
         safe_name    = movie_name.replace(" ", "")
@@ -229,12 +212,12 @@ async def create_one_short(short_number):
 👍 Like if you want more mythology stories!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-#{safe_name} #{safe_name}Part{part_number} #Part{part_number} {category_hashtags}
+#{safe_name} #{safe_name}Part{part_number} #Part{part_number}
 #MythologyShorts #MythologyStories #MythologyExplained #MythologyAnimated
 #AncientMythology #EpicMythology #MythologyForKids #MythologySeries
 #Shorts #YouTubeShorts #StoryTime #EpicStories #AncientLegends
-#LegendaryHeroes #GodsAndHeroes #MythologyFacts #AnimatedMythology
-#MythologyCartoon #AncientHistory #EpicTales #MythologyExplained
+#LegendaryHeroes #GodsAndHeroes #AnimatedMythology
+#MythologyCartoon #AncientHistory #EpicTales
 """
 
         video_id = uploader.upload(
