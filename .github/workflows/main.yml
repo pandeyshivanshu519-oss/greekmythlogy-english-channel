@@ -1,8 +1,12 @@
-name: mythlogy Storyteller - english Series
+name: Daily Continuous ayurvedc secrets
 
 on:
   schedule:
-    - cron: '0 0,6,12,18 * * *'
+    # Runs every day at 6:00 PM IST
+    # GitHub Actions uses UTC time
+    # 6:00 PM IST = 12:30 PM UTC
+    - cron: '30 12 * * *'
+    
   workflow_dispatch:
 
 jobs:
@@ -25,44 +29,24 @@ jobs:
           ffmpeg-version: '7.0'
 
       - name: Install Dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install edge-tts mutagen
 
       - name: Setup Fonts
         run: |
           sudo apt-get install -y -q fonts-noto-core
           python setup_fonts.py
 
-      - name: Restore Story State
-        uses: actions/cache@v4
-        with:
-          path: |
-            story_state.json
-            movies_list.json
-          key: story-state-${{ github.run_number }}
-          restore-keys: |
-            story-state-
-
-      - name: Run Movie Storyteller
+      - name: Run Continuous Shorts Generator
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          CHANNEL_NAME: ${{ secrets.CHANNEL_NAME }}
         run: python main.py
-
-      - name: Save Story State
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            story_state.json
-            movies_list.json
-          key: story-state-${{ github.run_number }}
 
       - name: Job Summary
         if: always()
-        run: |
-          echo "✅ Done at $(date)"
-          cat story_state.json || true
+        run: echo "✅ Job completed at $(date)"
