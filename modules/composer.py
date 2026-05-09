@@ -2,6 +2,7 @@ import os
 import shutil
 import random
 import subprocess
+import requests
 import ffmpeg
 from PIL import Image, ImageDraw, ImageFont
 
@@ -13,6 +14,15 @@ class Composer:
         self.final_dir     = os.path.join(os.getcwd(), "assets", "final")
         self.bg_music_path = "bgmusic.mp3"
         self.font_path     = self._resolve_font()
+
+        # ── Pexels loop video keywords (brainrot style) ──────────────
+        self.loop_keywords = [
+            "satisfying sand", "water flow relaxing", "lava lamp",
+            "soap bubbles", "rain window", "fire burning",
+            "ocean waves", "clouds timelapse", "marble run",
+            "kinetic sand", "waterfall nature", "snow falling"
+        ]
+        self.pexels_api_key = os.environ.get("PEXELS_API_KEY", "")
 
         os.makedirs(self.temp_dir,  exist_ok=True)
         os.makedirs(self.final_dir, exist_ok=True)
@@ -63,14 +73,151 @@ class Composer:
         return True
 
     # ─────────────────────────────────────────────────────────────────
+    # PEXELS LOOP VIDEO FETCH
+    # ─────────────────────────────────────────────────────────────────
+
+    def _fetch_loop_video(self, part_num):
+        """
+        Pexels API se random satisfying/loop video fetch karta hai.
+        Har scene ke liye alag keyword use karta hai for variety.
+        Returns: local path of downloaded loop video, or None
+        """
+        if not self.pexels_api_key:
+            print("   ⚠️ PEXELS_API_KEY not set — skipping split screen")
+            return None
+
+        # Har part ke liye alag keyword — variety ke liye
+        keyword = self.loop_keywords[part_num % len(self.loop_keywords)]
+        out_path = os.path.join(self.temp_dir, f"loop_{part_num}.mp4")
+
+        # Agar already downloaded hai toh reuse karo
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 100_000:
+            print(f"   ♻️  Loop video reused: {keyword}")
+            return out_path
+
+        try:
+            print(f"   🔍 Fetching loop video: '{keyword}'")
+            headers = {"Authorization": self.pexels_api_key}
+            params  = {
+                "query":       keyword,
+                "orientation": "landscape",
+                "size":        "medium",
+                "per_page":    10,
+            }
+            resp = requests.get(
+                "https://api.pexels.com/videos/search",
+                headers=headers,
+                params=params,
+                timeout=15
+            )
+            if resp.status_code != 200:
+                print(f"   ⚠️ Pexels error: {resp.status_code}")
+                return None
+
+            videos = resp.json().get("videos", [])
+            if not videos:
+                print(f"   ⚠️ No videos found for: {keyword}")
+                return None
+
+            # Random video choose karo
+            video   = random.choice(videos)
+            # HD ya SD file prefer karo
+            files   = sorted(
+                video.get("video_files", []),
+                key=lambda x: x.get("width", 0),
+                reverse=True
+            )
+            # 1080p ya usse kam prefer karo (bade files skip karo)
+            chosen  = None
+            for f in files:
+                if f.get("width", 0) <= 1920 and f.get("file_type", "") == "video/mp4":
+                    chosen = f
+                    break
+            if not chosen and files:
+                chosen = files[-1]
+
+            if not chosen:
+                return None
+
+            url = chosen["link"]
+            print(f"   ⬇️  Downloading loop video ({chosen.get('width')}x{chosen.get('height')})...")
+
+            vid_resp = requests.get(url, timeout=60, stream=True)
+            with open(out_path, "wb") as fp:
+                for chunk in vid_resp.iter_content(chunk_size=8192):
+                    fp.write(chunk)
+
+            print(f"   ✅ Loop video saved: {keyword}")
+            return out_path
+
+        except Exception as e:
+            print(f"   ⚠️ Loop video fetch failed: {e}")
+            return None
+
+    # ─────────────────────────────────────────────────────────────────
+    # SPLIT SCREEN — main (top) + loop (bottom)
+    # ─────────────────────────────────────────────────────────────────
+
+    def _apply_split_screen(self, main_video, loop_video, part_num):
+        """
+        Final video ko brainrot split-screen format mein convert karta hai:
+        - Top 50%  : main video (story/content)
+        - Bottom 50%: loop video (satisfying clip, auto-looped)
+
+        Output: 1080x1920 vertical video
+        """
+        out_path     = os.path.join(self.temp_dir, f"split_{part_num}.mp4")
+        main_dur     = self.get_duration(main_video)
+        half_h       = 960  # 1920 / 2
+
+        print(f"   🎬 Applying split screen (top+bottom 960px each)...")
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", main_video,
+            "-stream_loop", "-1",       # loop video ko infinitely loop karo
+            "-i", loop_video,
+            "-filter_complex",
+            f"""
+            [0:v]scale=1080:{half_h}:force_original_aspect_ratio=increase,
+                  crop=1080:{half_h},
+                  setsar=1[top];
+
+            [1:v]scale=1080:{half_h}:force_original_aspect_ratio=increase,
+                  crop=1080:{half_h},
+                  setsar=1[bottom];
+
+            [top][bottom]vstack=inputs=2[outv];
+
+            [0:a]volume=1.0[outa]
+            """,
+            "-map", "[outv]",
+            "-map", "[outa]",
+            "-t",   str(main_dur),      # main video ki duration tak hi chale
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf",    "23",
+            "-c:a",    "aac",
+            "-b:a",    "192k",
+            "-r",      "30",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "faststart",
+            out_path
+        ]
+
+        ok = self._run_cmd(cmd, "Split screen")
+        if ok and os.path.exists(out_path):
+            print(f"   ✅ Split screen done → {os.path.basename(out_path)}")
+            return out_path
+        else:
+            print(f"   ⚠️ Split screen failed — using original video")
+            return main_video
+
+    # ─────────────────────────────────────────────────────────────────
     # INTRO CLIP — 2 seconds, same design as thumbnail
     # ─────────────────────────────────────────────────────────────────
 
     def _make_intro_clip(self, intro_frame_path, part_num):
-        """
-        Convert intro still image → 2 second video clip.
-        This plays at the very start of every Short.
-        """
         out = os.path.join(self.temp_dir, f"intro_{part_num}.mp4")
         cmd = [
             "ffmpeg", "-y",
@@ -101,11 +248,6 @@ class Composer:
         return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
     def _make_synced_srt(self, char_timings, intro_offset=2.0, scene_id=1):
-        """
-        Build SRT from char_timings (per-line timings from audio engine).
-        Each line shows: CHARACTER NAME on line 1, dialogue words on line 2+
-        intro_offset = +2.0s because video starts with 2-sec intro frame.
-        """
         if not char_timings:
             return None
 
@@ -122,10 +264,8 @@ class Composer:
             if not text or end <= start:
                 continue
 
-            # Line 1: character name badge (NARRATOR has no name badge)
             name_line = "" if tag == "NARRATOR" else f"[ {tag.title()} ]"
 
-            # Split dialogue into chunks of 5 words
             words = text.split()
             chunks, cur = [], []
             for w in words:
@@ -141,7 +281,6 @@ class Composer:
             for ci, chunk in enumerate(chunks):
                 cs = start + ci * dur_per_chunk
                 ce = min(cs + dur_per_chunk - 0.05, end)
-                # Combine name badge + dialogue chunk
                 sub_text = f"{name_line}\n{chunk}" if name_line else chunk
                 entries.append((idx, cs, ce, sub_text))
                 idx += 1
@@ -168,8 +307,8 @@ class Composer:
         style = (
             f"fontfile={safe_font},"
             "FontSize=20,"
-            "PrimaryColour=&H00FFFFFF,"   # white dialogue
-            "SecondaryColour=&H0000FFFF," # yellow name badge
+            "PrimaryColour=&H00FFFFFF,"
+            "SecondaryColour=&H0000FFFF,"
             "OutlineColour=&H00000000,"
             "BackColour=&H90000000,"
             "Bold=1,"
@@ -196,39 +335,28 @@ class Composer:
     # ─────────────────────────────────────────────────────────────────
 
     def _burn_badge_on_image(self, img_path, out_path, top_text, part_num, total_parts):
-        """
-        Burn top badge onto image:
-        - Dark bar at top with movie name
-        - Small yellow PART XX box in top-right corner
-        """
         img  = Image.open(img_path).convert("RGB")
         W, H = img.size
         draw = ImageDraw.Draw(img, "RGBA")
 
-        # Dark top bar
         draw.rectangle([(0,0),(W,82)], fill=(0,0,0,215))
 
-        # Movie/series name on left
-        mf   = self._pil_font(26)
-        mb   = draw.textbbox((0,0), top_text, font=mf)
+        mf = self._pil_font(26)
         for dx, dy in [(-2,0),(2,0),(0,-2),(0,2)]:
             draw.text((20+dx, 24+dy), top_text, font=mf, fill=(0,0,0,255))
         draw.text((20, 24), top_text, font=mf, fill=(255,255,255,255))
 
-        # Yellow PART box — top right
         part_str = f"PART {part_num}"
         pf       = self._pil_font(22)
         pb       = draw.textbbox((0,0), part_str, font=pf)
         pw, ph   = pb[2]-pb[0], pb[3]-pb[1]
         bx       = W - pw - 36
         by       = 16
-        # Yellow box
         draw.rounded_rectangle(
             [bx-10, by-6, bx+pw+10, by+ph+6],
             radius=8,
             fill=(255, 210, 0, 255)
         )
-        # Dark text on yellow
         draw.text((bx, by), part_str, font=pf, fill=(20,20,20))
 
         img.save(out_path, "JPEG", quality=92)
@@ -277,7 +405,6 @@ class Composer:
                                 total_dur, part_num, movie_name, total_parts):
         short_movie = movie_name[:22]
 
-        # Interleave images + mood clips
         all_visuals = []
         mood_idx    = 0
         for i, img in enumerate(image_paths):
@@ -314,7 +441,6 @@ class Composer:
         if len(segments) == 1:
             return segments[0]
 
-        # Simple concat
         list_file = os.path.join(self.temp_dir, f"list_{part_num}.txt")
         with open(list_file, "w") as f:
             for p in segments:
@@ -417,11 +543,9 @@ class Composer:
         char_timings = scene.get("char_timings", [])
         actual_dur   = self.get_duration(nosub_path)
 
-        # Fallback: if no char_timings, build basic SRT from plain text
         if not char_timings and scene.get("text"):
-            words     = scene["text"].split()
-            dur       = max(actual_dur - 2.0, 1.0)
-            fake_end  = 2.0 + dur
+            words    = scene["text"].split()
+            dur      = max(actual_dur - 2.0, 1.0)
             char_timings = [{"tag": "NARRATOR", "text": scene["text"],
                               "start": 0.0, "end": dur}]
 
@@ -434,6 +558,16 @@ class Composer:
 
         if current != final_path:
             shutil.copy2(current, final_path)
+
+        # ── Step 5: Split screen (brainrot format) ───────────────────
+        loop_video = self._fetch_loop_video(part_num)
+        if loop_video and os.path.exists(loop_video):
+            split_path = self._apply_split_screen(final_path, loop_video, part_num)
+            if split_path and os.path.exists(split_path):
+                shutil.copy2(split_path, final_path)
+                print(f"   🎬 Brainrot split screen applied!")
+        else:
+            print(f"   ℹ️  No loop video — normal video output")
 
         print(f"   ✅ Part {part_num} done ({total_dur:.1f}s + 2s intro)")
         return final_path
