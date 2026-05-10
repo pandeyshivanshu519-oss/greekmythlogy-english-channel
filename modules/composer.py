@@ -2,7 +2,6 @@ import os
 import shutil
 import random
 import subprocess
-import requests
 import ffmpeg
 from PIL import Image, ImageDraw, ImageFont
 
@@ -15,14 +14,9 @@ class Composer:
         self.bg_music_path = "bgmusic.mp3"
         self.font_path     = self._resolve_font()
 
-        # ── Pexels loop video keywords (brainrot style) ──────────────
-        self.loop_keywords = [
-            "satisfying sand", "water flow relaxing", "lava lamp",
-            "soap bubbles", "rain window", "fire burning",
-            "ocean waves", "clouds timelapse", "marble run",
-            "kinetic sand", "waterfall nature", "snow falling"
-        ]
-        self.pexels_api_key = os.environ.get("PEXELS_API_KEY", "")
+        # ── Local loop videos folder ──────────────────────────────────
+        self.loop_videos_dir = os.path.join(os.getcwd(), "assets", "loop_videos")
+        os.makedirs(self.loop_videos_dir, exist_ok=True)
 
         os.makedirs(self.temp_dir,  exist_ok=True)
         os.makedirs(self.final_dir, exist_ok=True)
@@ -78,81 +72,32 @@ class Composer:
 
     def _fetch_loop_video(self, part_num):
         """
-        Pexels API se random satisfying/loop video fetch karta hai.
-        Har scene ke liye alag keyword use karta hai for variety.
-        Returns: local path of downloaded loop video, or None
+        assets/loop_videos/ folder se rotation-based video pick karta hai.
+        Har scene ke liye alag video — cycle mein chalta hai.
+        Supported: .mp4, .mov, .avi, .mkv
+        Add karo apni videos: assets/loop_videos/subway.mp4, minecraft.mp4 etc.
         """
-        if not self.pexels_api_key:
-            print("   ⚠️ PEXELS_API_KEY not set — skipping split screen")
-            return None
-
-        # Har part ke liye alag keyword — variety ke liye
-        keyword = self.loop_keywords[part_num % len(self.loop_keywords)]
-        out_path = os.path.join(self.temp_dir, f"loop_{part_num}.mp4")
-
-        # Agar already downloaded hai toh reuse karo
-        if os.path.exists(out_path) and os.path.getsize(out_path) > 100_000:
-            print(f"   ♻️  Loop video reused: {keyword}")
-            return out_path
-
+        exts = (".mp4", ".mov", ".avi", ".mkv")
         try:
-            print(f"   🔍 Fetching loop video: '{keyword}'")
-            headers = {"Authorization": self.pexels_api_key}
-            params  = {
-                "query":       keyword,
-                "orientation": "landscape",
-                "size":        "medium",
-                "per_page":    10,
-            }
-            resp = requests.get(
-                "https://api.pexels.com/videos/search",
-                headers=headers,
-                params=params,
-                timeout=15
-            )
-            if resp.status_code != 200:
-                print(f"   ⚠️ Pexels error: {resp.status_code}")
-                return None
+            all_videos = sorted([
+                os.path.join(self.loop_videos_dir, f)
+                for f in os.listdir(self.loop_videos_dir)
+                if f.lower().endswith(exts)
+            ])
+        except Exception:
+            all_videos = []
 
-            videos = resp.json().get("videos", [])
-            if not videos:
-                print(f"   ⚠️ No videos found for: {keyword}")
-                return None
-
-            # Random video choose karo
-            video   = random.choice(videos)
-            # HD ya SD file prefer karo
-            files   = sorted(
-                video.get("video_files", []),
-                key=lambda x: x.get("width", 0),
-                reverse=True
-            )
-            # 1080p ya usse kam prefer karo (bade files skip karo)
-            chosen  = None
-            for f in files:
-                if f.get("width", 0) <= 1920 and f.get("file_type", "") == "video/mp4":
-                    chosen = f
-                    break
-            if not chosen and files:
-                chosen = files[-1]
-
-            if not chosen:
-                return None
-
-            url = chosen["link"]
-            print(f"   ⬇️  Downloading loop video ({chosen.get('width')}x{chosen.get('height')})...")
-
-            vid_resp = requests.get(url, timeout=60, stream=True)
-            with open(out_path, "wb") as fp:
-                for chunk in vid_resp.iter_content(chunk_size=8192):
-                    fp.write(chunk)
-
-            print(f"   ✅ Loop video saved: {keyword}")
-            return out_path
-
-        except Exception as e:
-            print(f"   ⚠️ Loop video fetch failed: {e}")
+        if not all_videos:
+            print("   ⚠️  No loop videos found in assets/loop_videos/")
+            print("   💡 Add files like: subway.mp4, minecraft.mp4, satisfying.mp4")
             return None
+
+        # Rotation — part_num se cycle karo taaki consecutive repeats na hon
+        chosen = all_videos[part_num % len(all_videos)]
+        name   = os.path.basename(chosen)
+        idx    = part_num % len(all_videos) + 1
+        print(f"   🎮 Loop video [{idx}/{len(all_videos)}]: {name}")
+        return chosen
 
     # ─────────────────────────────────────────────────────────────────
     # SPLIT SCREEN — main (top) + loop (bottom)
